@@ -1,0 +1,99 @@
+{
+  "name": "OCR image handle From Google",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "82edb912-1266-4624-a38a-f7fd5581a53d",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "python",
+        "pythonCode": "# Add a new field called 'myNewField' to the JSON of the item\n_input.item.json.myNewField = _input.item.json\nimport json\nimport os\n\ndata = _input.item.json.myNewField\n# Jika data berupa list, ambil elemen pertama\nif isinstance(data, list):\n    data = data[0]\n\nif \"responses\" in data:\n    responses = data[\"responses\"]\nelse:\n    raise ValueError(\"Key 'responses' tidak ditemukan dalam data JSON.\")\n\n# Ambil textAnnotations dari response pertama\nannotations = responses[0][\"textAnnotations\"]\n\n# Abaikan elemen pertama (gabungan seluruh teks)\nwords = annotations[1:]\n\n# Threshold untuk grouping baris (dalam piksel)\ny_threshold = 10\n\n# Fungsi untuk menghitung nilai rata-rata y dari bounding poly\ndef get_avg_y(vertices):\n    total_y = 0\n    count = 0\n    for vertex in vertices:\n        total_y += vertex.get(\"y\", 0)\n        count += 1\n    return total_y / count if count > 0 else 0\n\n# Fungsi untuk mengambil titik kiri atas (x, y) untuk pengurutan horizontal\ndef get_top_left(vertices):\n    return (vertices[0].get(\"x\", 0), vertices[0].get(\"y\", 0))\n\n# Kelompokkan kata berdasarkan rata-rata nilai y\nlines = {}\nfor word in words:\n    vertices = word[\"boundingPoly\"][\"vertices\"]\n    avg_y = get_avg_y(vertices)\n    x, _ = get_top_left(vertices)\n    # Cari baris yang sudah ada berdasarkan threshold\n    matched = False\n    for key in list(lines.keys()):\n        if abs(avg_y - key) < y_threshold:\n            lines[key].append((x, word[\"description\"]))\n            matched = True\n            break\n    if not matched:\n        lines[avg_y] = [(x, word[\"description\"])]\n\n# Urutkan baris berdasarkan nilai y (dari atas ke bawah) dan kata di setiap baris berdasarkan x\nordered_lines = []\nfor y in sorted(lines.keys()):\n    line = sorted(lines[y], key=lambda tup: tup[0])\n    line_text = ' '.join([text for _, text in line])\n    ordered_lines.append(line_text)\n\nfinal_text = \"\\n\".join(ordered_lines)\n_input.item.json.final = final_text\n\nreturn {\n    \"json\": {\n        \"final\": final_text\n    }\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        0
+      ],
+      "id": "4435a79b-8d3c-4cac-8ace-a94aa09f7ad5",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vision.googleapis.com/v1/images:annotate?key=AIzaSyA0vqvxCfgBufeFM7sqQmoqfSrmdiRBicA",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"requests\": [\n    {\n      \"image\": {\n        \"content\": \"{{ $json.data }}\"\n      },\n      \"features\": [\n        {\n          \"type\": \"DOCUMENT_TEXT_DETECTION\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        380,
+        0
+      ],
+      "id": "c11de2fd-2a82-4214-9ad0-cf34dc3ee0f8",
+      "name": "Send Image to google ocr"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Send Image to google ocr",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Image to google ocr": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a1c9f64b-f145-4c5b-b8a2-b3783cb7242a",
+  "meta": {
+    "instanceId": "fae1ee03025a19a86244f4ccdca4b811e711d8a022b44ef1ce4533dce22110d6"
+  },
+  "id": "Ei9KC03kzXidTAeT",
+  "tags": [
+    {
+      "createdAt": "2025-04-13T11:38:29.166Z",
+      "updatedAt": "2025-04-13T11:38:29.166Z",
+      "id": "OlTpaw0BpCrs05sQ",
+      "name": "Sub_workflow"
+    },
+    {
+      "createdAt": "2025-03-28T17:10:48.756Z",
+      "updatedAt": "2025-03-28T17:10:48.756Z",
+      "id": "njUXE4tLjbDpL4VW",
+      "name": "POS AI"
+    }
+  ]
+}

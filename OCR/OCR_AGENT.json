@@ -1,0 +1,1676 @@
+{
+  "name": "OCR AGENT",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "python",
+        "pythonCode": "# Add a new field called 'myNewField' to the JSON of the item\n_input.item.json.myNewField = _input.item.json\nimport json\nimport os\n\ndata = _input.item.json.myNewField\n# Jika data berupa list, ambil elemen pertama\nif isinstance(data, list):\n    data = data[0]\n\nif \"responses\" in data:\n    responses = data[\"responses\"]\nelse:\n    raise ValueError(\"Key 'responses' tidak ditemukan dalam data JSON.\")\n\n# Ambil textAnnotations dari response pertama\nannotations = responses[0][\"textAnnotations\"]\n\n# Abaikan elemen pertama (gabungan seluruh teks)\nwords = annotations[1:]\n\n# Threshold untuk grouping baris (dalam piksel)\ny_threshold = 10\n\n# Fungsi untuk menghitung nilai rata-rata y dari bounding poly\ndef get_avg_y(vertices):\n    total_y = 0\n    count = 0\n    for vertex in vertices:\n        total_y += vertex.get(\"y\", 0)\n        count += 1\n    return total_y / count if count > 0 else 0\n\n# Fungsi untuk mengambil titik kiri atas (x, y) untuk pengurutan horizontal\ndef get_top_left(vertices):\n    return (vertices[0].get(\"x\", 0), vertices[0].get(\"y\", 0))\n\n# Kelompokkan kata berdasarkan rata-rata nilai y\nlines = {}\nfor word in words:\n    vertices = word[\"boundingPoly\"][\"vertices\"]\n    avg_y = get_avg_y(vertices)\n    x, _ = get_top_left(vertices)\n    # Cari baris yang sudah ada berdasarkan threshold\n    matched = False\n    for key in list(lines.keys()):\n        if abs(avg_y - key) < y_threshold:\n            lines[key].append((x, word[\"description\"]))\n            matched = True\n            break\n    if not matched:\n        lines[avg_y] = [(x, word[\"description\"])]\n\n# Urutkan baris berdasarkan nilai y (dari atas ke bawah) dan kata di setiap baris berdasarkan x\nordered_lines = []\nfor y in sorted(lines.keys()):\n    line = sorted(lines[y], key=lambda tup: tup[0])\n    line_text = ' '.join([text for _, text in line])\n    ordered_lines.append(line_text)\n\nfinal_text = \"\\n\".join(ordered_lines)\n_input.item.json.final = final_text\n\nreturn {\n    \"json\": {\n        \"final\": final_text\n    }\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        -2420
+      ],
+      "id": "ca86f6c7-6c69-47f8-9898-b6d44be34926",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "599757ba-34c2-4e20-ad1b-fb5cea61a10a",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -540,
+        -180
+      ],
+      "id": "8dc6fa32-176e-4a45-81f9-83a057385852",
+      "name": "Webhook",
+      "webhookId": "599757ba-34c2-4e20-ad1b-fb5cea61a10a",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wylDLcqrz18bY2uA",
+          "name": "Bearer local Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vision.googleapis.com/v1/images:annotate?key=AIzaSyA0vqvxCfgBufeFM7sqQmoqfSrmdiRBicA",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"requests\": [\n    {\n      \"image\": {\n        \"content\": \"{{ $json.data }}\"\n      },\n      \"features\": [\n        {\n          \"type\": \"DOCUMENT_TEXT_DETECTION\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -2420
+      ],
+      "id": "944c2205-25cc-4d8a-b227-2ec5d8b70cc9",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "binaryPropertyName": "file",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        -180
+      ],
+      "id": "743305c6-e57e-4d9b-8b21-5a993f5a4235",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        5100,
+        -820
+      ],
+      "id": "d0cfcdae-7967-411e-8a09-34a7bbc38da8",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "Ei9KC03kzXidTAeT",
+          "mode": "list",
+          "cachedResultName": "OCR image handle From Google"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        60,
+        -180
+      ],
+      "id": "aabda626-d50c-4d1b-a419-e5f744b84511",
+      "name": "Execute Workflow",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        700,
+        620
+      ],
+      "id": "b8db76e0-1fa2-44bd-9157-33070fdfb4cb",
+      "name": "DeepSeek Chat Model1",
+      "credentials": {
+        "deepSeekApi": {
+          "id": "VF1NcHP2W7HycDm0",
+          "name": "Testing Agent Deepseek"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Saya akan memberikan hasil OCR dari sebuah invoice atau faktur penjualan. Tugas kamu adalah: \n1.\tTentukan hasil list berikut (WAJIB ADA SEMUA):\na.\tNomor Referensi\nb.\tNama Supplier\nc.\tTgl Jatuh Tempo\nd.\tTanggal Faktur\ne.\tTipe Dokumen\nf.\tTipe Pembayaran\ng.\tSalesman\nh. PPN ('PPN = ada atau tidak')\n2.\tMenyusun tabel dengan format berikut: \na.\tNo Kode Barang\nb.\tNama Barang\nc.\tKuantitas\nd.\tSatuan kuantitas\ne.\tHarga Satuan\nf.\tJumlah Bruto\ng.\tDiskon %\nh.\tDiskon Rp\ni.\tJumlah Netto\n3. pastikan semua list ada dan sesuai.\n4. tambahkan debug log di bawah tabel\n5.\tJika ada bagian yang tidak terbaca, beri penjelasan di bagian debug. \n6.\tJika ada kemungkinan salah baca, jelaskan di bagian debug mengapa kamu memilih nilai tersebut. \n7.\tpenjelasan debug log isinya secara singkat: Bagaimana kamu menentukan kuantitas? Apakah ada bagian yang sulit dibaca? Apakah ada angka yang tampaknya salah tetapi tetap digunakan? \nBerikut adalah hasil OCR nya:\n\n{{ $json.final }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Kamu adalah asisten yang sangat teliti dalam membaca dan menginterpretasikan data dari hasil OCR. Jangan mengubah angka atau teks tanpa alasan yang jelas. jelaskan dalam bagian debug mengapa kamu memilih nilai tertentu. Saat menemukan angka atau teks yang sulit dibaca, lakukan hal berikut: Jika kamu yakin, masukkan angka yang kamu baca. Jika tidak yakin, tambahkan alasan di bagian debug."
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        280,
+        -180
+      ],
+      "id": "c3818fff-441d-4275-a895-c43e247ab4d7",
+      "name": "Extract information from OCR"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        80
+      ],
+      "id": "9fa68c22-a54c-430c-bfcf-99a9b94fef0b",
+      "name": "GPT 4o Mini4",
+      "credentials": {
+        "openAiApi": {
+          "id": "40Iq07hWWdk8iNjx",
+          "name": "OpenAi testing API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2700,
+        -100
+      ],
+      "id": "e07255b5-d1cf-4926-88f2-aed7e7788b47",
+      "name": "GPT 4o Mini1",
+      "credentials": {
+        "openAiApi": {
+          "id": "40Iq07hWWdk8iNjx",
+          "name": "OpenAi testing API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"InvoiceDebug\",\n  \"type\": \"object\",\n  \"definitions\": {\n    \"fieldString\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"],\n      \"additionalProperties\": false\n    },\n    \"debugEntry\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"item_index\": { \"type\": [\"integer\", \"null\"] },\n        \"message\": { \"$ref\": \"#/definitions/fieldString\" }\n      },\n      \"required\": [\"item_index\", \"message\"],\n      \"additionalProperties\": false\n    }\n  },\n  \"properties\": {\n    \"debug\": {\n      \"type\": \"array\",\n      \"items\": { \"$ref\": \"#/definitions/debugEntry\" }\n    },\n    \"summary_debug\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\"debug\", \"summary_debug\"],\n  \"additionalProperties\": false\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        640
+      ],
+      "id": "169d7630-cd49-444e-a1f5-1a09caf20083",
+      "name": "DeepSeek parser"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"InvoiceInfo\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"nomor_referensi\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"]\n    },\n    \"nama_supplier\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"]\n    },\n    \"tgl_jatuh_tempo\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"epoch\": { \"type\": [\"number\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"epoch\", \"is_confident\"]\n    },\n    \"tanggal_faktur\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"epoch\": { \"type\": [\"number\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"epoch\", \"is_confident\"]\n    },\n    \"tipe_dokumen\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"]\n    },\n    \"tipe_pembayaran\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"]\n    },\n    \"salesman\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"]\n    },\n    \"include_vat\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": \"boolean\" },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"]\n    }\n  },\n  \"required\": [\n    \"nomor_referensi\",\n    \"nama_supplier\",\n    \"tgl_jatuh_tempo\",\n    \"tanggal_faktur\",\n    \"tipe_dokumen\",\n    \"tipe_pembayaran\",\n    \"salesman\",\n    \"include_vat\"\n  ],\n  \"additionalProperties\": false\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        -860
+      ],
+      "id": "de1cc63e-f2d6-4233-b936-edd58fb673af",
+      "name": "GPT 4o Mini parser"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -1060
+      ],
+      "id": "7a96f405-f94c-44b7-aa5e-985ae8b8abf1",
+      "name": "Auto-fixing Output Parser1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        840,
+        -860
+      ],
+      "id": "304d8b76-4a8a-4116-84b9-d570468cce40",
+      "name": "GPT 4o Mini",
+      "credentials": {
+        "openAiApi": {
+          "id": "40Iq07hWWdk8iNjx",
+          "name": "OpenAi testing API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        740,
+        -1060
+      ],
+      "id": "d9c41f36-a4df-4fa2-86fa-9e37ddb7625a",
+      "name": "GPT 4o Mini2",
+      "credentials": {
+        "openAiApi": {
+          "id": "40Iq07hWWdk8iNjx",
+          "name": "OpenAi testing API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ubah data berikut menjadi JSON sesuai skema. Validasi setiap parameter secara individual:\n1.\tverifikasi menggunakan informasi dari bagian \"Debug Log\" atau catatan, error, atau debug untuk menentukan apakah data valid:\n•\tJika ada indikasi kesalahan (contoh: format nama barang tidak standar), tandai is_confident: false.\n•\tJika kolom tersebut kosong atau bernilai null, tandai is_confident: false.\n2. jika tanggal pada data tidak berformat DD-MM-YYYY maka ubah ke DD-MM-YYYY. jangan asal ubah. jika data tidak ada atau null maka isi null dalam responnya\n3.\tTandai setiap kolom dengan is_confident: true jika data valid hanya melalui data lengkap, atau is_confident: false jika ada kesalahan perhitungan, ketidaklengkapan, atau bernilai null.\n5.\tGunakan 'null' untuk nilai yang tidak tersedia dalam data input untuk indikasi null.\n6.\tcek indikasi apakah PPN include atau tidak.\nberikut datanya:\n\n{{ $json.text }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Kamu adalah asisten yang sangat teliti. Jangan tambahkan informasi baru atau ubah informasi yang ada kecuali yang di instruksikan. Fokus hanya pada instruksi, validasi dan penandaan flag is_confident."
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        780,
+        -1340
+      ],
+      "id": "4e50df54-be45-43ed-9565-253942803271",
+      "name": "Invoice Header"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Saya akan memberikan informasi dari sebuah scan OCR invoice atau faktur penjualan. Tugas kamu adalah: \n1.\tMelakukan validasi melalui perhitungan untuk tiap item pada:\na.\tKuantitas\nb.\tSatuan kuantitas\nc.\tHarga Satuan\nd.\tJumlah Bruto\ne.\tDiskon %\nf.\tDiskon Rp\ng.\tJumlah Netto\n2.\tlihat apakah ada pola yang tidak sesuai dan masukkan ke dalam validasimu.\n3.\tMelihat bagian debug dari data yang diterima apakah sebelumnya ada yang mungkin merupakan kesalahan dari pembacaan ocr dan masukkan ke dalam validasimu.\n4.  hasil output berupa json dengan isi hanya debug dalam bentuk array untuk masing masing items secara singkat, dan debug summarry dalam bentuk string 1 paragraf saja\n6. isi debug summary secara singkat setelah debug log; Bagaimana kamu menentukan kuantitas tiap items yang mungkin bermasalah? Apakah ada bagian yang sulit dibaca? Apakah ada angka yang tampaknya salah tetapi tetap digunakan? \nBerikut adalah data yang perlu kamu interpretasikan:\n\n{{ $json.text }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Kamu adalah asisten yang sangat teliti dalam membaca, menginterpretasikan, melihat pola, dan melakukan validasi lewat kalkulasi data. output harus detail dalam bentuk json. "
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        700,
+        380
+      ],
+      "id": "0e5b4329-8f7f-4dd1-a64d-211e27be5d48",
+      "name": "Validate Items by Calculation",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Saya akan memberikan informasi dari sebuah invoice atau faktur penjualan. Tugas kamu adalah:\n\nValidasi Angka Tanpa Mengubah Struktur:\n\nPeriksa setiap nilai yang berupa angka dalam data, kecuali nilai pada kolom 'kode barang'.\n\nJangan tambahkan atau hapus data—hanya validasi dan konversi format angka.\n\nKonversi Notasi Angka:\n\nJika sebuah angka ditulis dengan notasi Indonesia (misalnya, tanda titik . sebagai pemisah ribuan dan koma , sebagai desimal), ubahlah angka tersebut ke format internasional yang diakui oleh JSON, sehingga dapat diinterpretasikan sebagai tipe number.\n\nMisalnya, \"95.570\" (dengan titik sebagai pemisah ribuan) harus dikonversi menjadi 95570 (tanpa tanda pemisah) atau jika ada desimal, gunakan format yang tepat (misalnya \"3,14\" menjadi 3.14).\n\nFokus Hanya pada Format Angka:\n\nUbah hanya bagian angka yang tidak sesuai notasi internasional. Struktur data secara keseluruhan harus tetap sama.\n\n{{ $json.text }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "KAMU ADALAH ASISTEN YANG SANGAT TELITI DALAM MEMERIKSA DATA. output harus lengkap sesuai dengan input awal. jangan menghilangkan, menambah, atau mengubah data lain kecuali yang di instruksikan."
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        720,
+        -180
+      ],
+      "id": "43f543ea-d5c5-40ed-a3d1-84adc75e966a",
+      "name": "Change point and comma"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        740,
+        80
+      ],
+      "id": "828b0c15-c713-4393-a12e-d867d77b6506",
+      "name": "GPT 4o Mini5",
+      "credentials": {
+        "openAiApi": {
+          "id": "40Iq07hWWdk8iNjx",
+          "name": "OpenAi testing API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"InvoiceItems\",\n  \"type\": \"object\",\n  \"definitions\": {\n    \"fieldString\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"],\n      \"additionalProperties\": false\n    },\n    \"fieldNumber\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"number\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"],\n      \"additionalProperties\": false\n    }\n  },\n  \"properties\": {\n    \"item_keys\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"uniqueItems\": true\n    },\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"kode_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n          \"nama_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n          \"qty\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"satuan\": { \"$ref\": \"#/definitions/fieldString\" },\n          \"harga_satuan\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"harga_bruto\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"diskon_persen\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"diskon_rp\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"jumlah_netto\": { \"$ref\": \"#/definitions/fieldNumber\" }\n        },\n        \"required\": [\n          \"kode_barang_invoice\",\n          \"nama_barang_invoice\",\n          \"qty\",\n          \"satuan\",\n          \"harga_satuan\",\n          \"harga_bruto\",\n          \"diskon_persen\",\n          \"diskon_rp\",\n          \"jumlah_netto\"\n        ],\n        \"additionalProperties\": false\n      }\n    },\n    \"total_items\": { \"$ref\": \"#/definitions/fieldNumber\" }\n  },\n  \"required\": [\"item_keys\", \"items\", \"total_items\"],\n  \"additionalProperties\": false\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        3100,
+        20
+      ],
+      "id": "df1bbe38-2491-4a15-9ed2-07086c261171",
+      "name": "GPT 4o Mini parser1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Lakukan validasi pada setiap parameter secara individual dengan ketentuan berikut:\n\nVerifikasi Validitas Data\n\nGunakan informasi dari bagian \"Debug Log\" untuk menentukan apakah data valid.\n\nJika terdapat indikasi kesalahan (misalnya: format nama barang tidak standar), tandai setiap field terkait dengan is_confident: false.\n\nJika kolom tersebut kosong atau bernilai null, maka set is_confident untuk fields tersebut sebagai false.\n\nPenandaan Validitas\n\nTandai setiap kolom dengan is_confident: true jika data lengkap dan valid.\n\nTandai dengan is_confident: false jika terdapat kesalahan perhitungan pada fields tersebut, ketidaklengkapan, atau nilai null.\n\nPenanganan Nilai Kosong\n\nGunakan nilai null untuk kolom yang tidak tersedia dalam data input.\n\nValidasi Total Items\n\nPastikan perhitungan total item dilakukan dengan benar.\n\nKepatuhan Terhadap Data Asli\n\nJangan tambahkan informasi baru atau mengubah informasi yang ada, kecuali pada bagian debug, debug summary dan is_confident untuk menambah detail.\n\nBerikut datanya:\n\n{{ JSON.stringify($json.data, null, 2) }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Kamu adalah asisten yang sangat teliti dalam membaca dan menginterpretasikan data. Jangan mengubah angka atau teks tanpa alasan yang jelas.\nKeluarkan output sebagai JSON sesuai skema dengan is_confident wajib disetiap fields.\n"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        2800,
+        -480
+      ],
+      "id": "e2d2334f-8973-4afd-93a1-97826a8a441d",
+      "name": "Set a Structure",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1920,
+        40
+      ],
+      "id": "67824d6a-0811-46a6-9737-39856ce9a77e",
+      "name": "Merge items and debug"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        4340,
+        200
+      ],
+      "id": "e8333987-0a15-452e-9493-0c995c9f20d8",
+      "name": "Merge items and debug after structurize"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "83593b59-62a2-406e-a5f1-7a18706f5aa4",
+              "name": "debug",
+              "value": "={{ $json.output.debug }}",
+              "type": "array"
+            },
+            {
+              "id": "fa74e44e-7c60-4c75-af35-c1c5c424a6c0",
+              "name": "debug_summary",
+              "value": "={{ $json.output.summary_debug }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1180,
+        260
+      ],
+      "id": "83156f96-33b1-403e-9851-f8eb5d99aeee",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b79f6987-6d88-4b07-bc7c-524035d53e82",
+              "name": "ocr",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1160,
+        -180
+      ],
+      "id": "c38b11d4-b267-41e3-8118-609454097ca6",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2260,
+        40
+      ],
+      "id": "f1cddfff-c2b3-444e-9050-4b2faa395326",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [
+        2920,
+        -200
+      ],
+      "id": "ece7e9b8-000d-4e5f-ae09-73ccef7e35bc",
+      "name": "Auto-fixing Output Parser"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2920,
+        40
+      ],
+      "id": "c744bf2a-ade7-4cfe-83a5-10abc90fad9b",
+      "name": "GPT 4o Mini3",
+      "credentials": {
+        "openAiApi": {
+          "id": "40Iq07hWWdk8iNjx",
+          "name": "OpenAi testing API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2840,
+        -1800
+      ],
+      "id": "0f8632e9-ce65-45f8-b0cf-3b0eefa8bbc0",
+      "name": "Merge Jatuh Tempo1"
+    },
+    {
+      "parameters": {
+        "operation": "formatDate",
+        "date": "={{ $json.jatuh_tempo }}",
+        "format": "X",
+        "outputFieldName": "jatuh_tempo_epoch",
+        "options": {
+          "fromFormat": "dd-MM-yyyy"
+        }
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        2540,
+        -2040
+      ],
+      "id": "a223aac6-12a6-43bb-a586-8c17b024e376",
+      "name": "Date to Epoch"
+    },
+    {
+      "parameters": {
+        "operation": "formatDate",
+        "date": "={{ $json.tanggal_faktur }}",
+        "format": "X",
+        "outputFieldName": "tannggal_faktur_epoch",
+        "options": {
+          "fromFormat": "dd-MM-yyyy"
+        }
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        -1200
+      ],
+      "id": "8d7c3210-cfa2-4bc1-9157-fb58ef4bd32f",
+      "name": "Date to Epoch1"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"jatuh_tempo\": \"{{ $json.output.tgl_jatuh_tempo.value }}\",\n  \"is_confident\": {{ $json.output.tgl_jatuh_tempo.is_confident }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2320,
+        -2040
+      ],
+      "id": "daf0b9f7-9f9b-47bf-a827-2dd4ee6a232d",
+      "name": "Parse Jatuh Tempo"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"tanggal_faktur\": \"{{ $json.output.tanggal_faktur.value }}\",\n  \"is_confident\": {{ $json.output.tanggal_faktur.is_confident }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2340,
+        -1200
+      ],
+      "id": "73a45d83-b2ad-41f9-9428-1106352b728f",
+      "name": "Parse Tanggal Faktur"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "405d88f0-9e66-473b-94b1-311ddcdeac55",
+              "name": "is_confident",
+              "value": "={{ $json.output.tgl_jatuh_tempo.is_confident }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2320,
+        -1680
+      ],
+      "id": "5dea12a5-045b-44a1-93ec-e1e97ed316f3",
+      "name": "Confident Jatuh Tempo"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "405d88f0-9e66-473b-94b1-311ddcdeac55",
+              "name": "is_confident",
+              "value": "={{ $json.output.tanggal_faktur.is_confident }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2320,
+        -800
+      ],
+      "id": "9a453888-6a96-4a00-be01-c02c13f35878",
+      "name": "Confident Tanggal Faktur"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2880,
+        -940
+      ],
+      "id": "4ddbcdbd-b555-4a04-b79b-b9244903cd23",
+      "name": "Merge Tanggal Faktur"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3340,
+        -1540
+      ],
+      "id": "c46cba73-30b6-4bf3-b984-02bd86966dee",
+      "name": "Merge Date Faktur ALL"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"jatuh_tempo\": null,\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2320,
+        -1860
+      ],
+      "id": "7425d82c-fa0c-48f4-b55f-c8d4ab970235",
+      "name": "Parse Jatuh Tempo NULL"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"tanggal_faktur\": null,\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2340,
+        -1000
+      ],
+      "id": "00d92aa6-3f50-4734-9a6f-548eb99edb11",
+      "name": "Parse Jatuh Tempo NULL1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3ed88f2b-59f0-4b7d-bae5-965e248cf411",
+              "leftValue": "={{ $json.output.tgl_jatuh_tempo.value }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1940,
+        -1960
+      ],
+      "id": "7b698588-0aad-4e59-bce9-63cfab61a648",
+      "name": "If jatuh tempo exist"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "60d6a86b-6cac-4e10-b9ba-3371dfc7fc76",
+              "leftValue": "={{ $json.output.tanggal_faktur.value }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1960,
+        -1140
+      ],
+      "id": "c2948cd4-9d7d-4802-bd40-ffb2bd35a8aa",
+      "name": "If Tanggal Faktur Exist"
+    },
+    {
+      "parameters": {
+        "content": "## Parse Jatuh Tempo\n**Jatuh Tempo To Epoch",
+        "height": 620,
+        "width": 1340
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        -2140
+      ],
+      "id": "98064b65-50f7-41c0-8623-58c8bfce5949",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Parse Tanggal Faktur\n**Tanggal Faktur To Epoch",
+        "height": 620,
+        "width": 1340
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        -1220
+      ],
+      "id": "1ee90d93-fde6-449e-9782-b0cbf0ef1c4a",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "=\n  {\n    \"nomor_referensi\": {\n      \"value\": \"{{ $json.output.nomor_referensi.value }}\",\n      \"is_confident\": {{ $json.output.nomor_referensi.is_confident }}\n    },\n    \"nama_supplier\": {\n      \"value\": \"{{ $json.output.nama_supplier.value }}\",\n      \"is_confident\": {{ $json.output.nomor_referensi.is_confident }}\n    },\n    \"tgl_jatuh_tempo\": {\n      \"value\": \"{{ $json.output.tgl_jatuh_tempo.value }}\",\n      \"epoch\": {{ $json.jatuh_tempo_epoch || null}},\n      \"is_confident\": {{ $json.output.tgl_jatuh_tempo.is_confident }}\n    },\n    \"tanggal_faktur\": {\n      \"value\": \"{{ $json.output.tanggal_faktur.value }}\",\n      \"epoch\": {{ $json.tannggal_faktur_epoch || null }},\n      \"is_confident\": {{ $json.output.tanggal_faktur.is_confident }}\n    },\n    \"tipe_dokumen\": {\n      \"value\": \"{{ $json.output.tipe_dokumen.value }}\",\n      \"is_confident\": {{ $json.output.tipe_dokumen.is_confident }}\n    },\n    \"tipe_pembayaran\": {\n      \"value\": \"{{ $json.output.tipe_pembayaran.value }}\",\n      \"is_confident\": {{ $json.output.tipe_pembayaran.is_confident }}\n    },\n    \"salesman\": {\n      \"value\": \"{{ $json.output.salesman.value }}\",\n      \"is_confident\": {{ $json.output.salesman.is_confident }}\n    },\n    \"include_vat\": {\n      \"value\": {{ $json.output.include_vat.value }},\n      \"is_confident\": {{ $json.output.include_vat.is_confident }}\n    }\n  }\n  \n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4180,
+        -1320
+      ],
+      "id": "278510d6-7984-4255-9e19-13e649a3dd8f",
+      "name": "Insert epoch to data"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3740,
+        -1320
+      ],
+      "id": "ceda6fee-dcdd-482d-b1e6-270588109512",
+      "name": "Merge header ALL"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        4800,
+        -820
+      ],
+      "id": "a5ff0d8a-2280-4c22-96b6-fc0caea10dc0",
+      "name": "merge all"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3420,
+        -160
+      ],
+      "id": "c1cbf5ff-c7a4-454e-be90-9488a6e1a5e4",
+      "name": "GPT 4o Mini6",
+      "credentials": {
+        "openAiApi": {
+          "id": "40Iq07hWWdk8iNjx",
+          "name": "OpenAi testing API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"InvoiceItems\",\n  \"type\": \"object\",\n  \"definitions\": {\n    \"fieldString\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"string\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"],\n      \"additionalProperties\": false\n    },\n    \"fieldNumber\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"value\": { \"type\": [\"number\", \"null\"] },\n        \"is_confident\": { \"type\": \"boolean\" }\n      },\n      \"required\": [\"value\", \"is_confident\"],\n      \"additionalProperties\": false\n    }\n  },\n  \"properties\": {\n    \"item_keys\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"uniqueItems\": true\n    },\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"kode_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n          \"nama_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n          \"qty\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"satuan\": { \"$ref\": \"#/definitions/fieldString\" },\n          \"harga_satuan\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"harga_bruto\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"diskon_persen\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"diskon_rp\": { \"$ref\": \"#/definitions/fieldNumber\" },\n          \"jumlah_netto\": { \"$ref\": \"#/definitions/fieldNumber\" }\n        },\n        \"required\": [\n          \"kode_barang_invoice\",\n          \"nama_barang_invoice\",\n          \"qty\",\n          \"satuan\",\n          \"harga_satuan\",\n          \"harga_bruto\",\n          \"diskon_persen\",\n          \"diskon_rp\",\n          \"jumlah_netto\"\n        ],\n        \"additionalProperties\": false\n      }\n    },\n    \"total_items\": { \"$ref\": \"#/definitions/fieldNumber\" }\n  },\n  \"required\": [\"item_keys\", \"items\", \"total_items\"],\n  \"additionalProperties\": false\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        3940,
+        0
+      ],
+      "id": "a14033ee-a637-4ba9-a4e1-7cd5d9312bb8",
+      "name": "GPT 4o Mini parser2"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [
+        3780,
+        -200
+      ],
+      "id": "aecf231c-ed8b-416f-baf9-3b4b0aa14d91",
+      "name": "Auto-fixing Output Parser2"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3740,
+        0
+      ],
+      "id": "165ef283-3d39-44a7-ad25-e80823467235",
+      "name": "GPT 4o Mini7",
+      "credentials": {
+        "openAiApi": {
+          "id": "40Iq07hWWdk8iNjx",
+          "name": "OpenAi testing API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Validate and REPAIR this JSON BASED ON THE ERROR THAT WILL BE GIVEN BELOW.\nFix type mismatches (e.g. number vs string), missing fields, or structure issues as needed. DO NOT CHANGE ANYTHING ELSE BESIDE THE ERROR THAT THE ERROR GIVES, ESPECIALLY THE 'is_confident'.\nhere is the json to validate:\n\nJSON:\n{{ JSON.stringify($('Set a Structure').item.json.output) }}\n\nerrors:\n{{ JSON.stringify($json.errors) }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "As a thorough, careful, and helpful assistant, please output your response as JSON."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.8,
+      "position": [
+        3600,
+        -480
+      ],
+      "id": "a4f9dc0f-75c8-4e14-a7d1-2b776d480dbb",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "name": "check_fit_schema",
+        "description": "call this tool to check if there are errors in the JSON.",
+        "language": "python",
+        "pythonCode": "# Loop over input items and add a new field called 'myNewField' to the JSON of each one\nnew = _input.item.json.output\nimport json\nfrom jsonschema import Draft7Validator\n\ndef convert_structure(item):\n  is_js_proxy = hasattr(item, '__class__') and item.__class__.__name__ == 'JsProxy'\n  \n  if is_js_proxy:\n    if hasattr(item, 'to_py'):\n      return convert_structure(item.to_py())\n    else:\n      try: return dict(item) # Jika JsProxy merepresentasikan objek JS\n      except: pass\n      try: return list(item)  # Jika JsProxy merepresentasikan array JS\n      except: pass\n      try: return str(item)   # Konversi paksa ke string sebagai fallback\n      except: return None    # Atau kembalikan None jika tidak bisa dikonversi\n  elif isinstance(item, dict):\n      # Jika dictionary, proses setiap value secara rekursif\n      return {k: convert_structure(v) for k, v in item.items()}\n  elif isinstance(item, list):\n      # Jika list, proses setiap elemen secara rekursif\n      return [convert_structure(elem) for elem in item]\n  else:\n      # Jika tipe dasar yang sudah kompatibel (str, int, float, bool, None), kembalikan apa adanya\n      return item\n\nnew_converted = convert_structure(new)\n\n\n# Skema JSON kamu\nschema = {\n    \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n    \"title\": \"InvoiceItems\",\n    \"type\": \"object\",\n    \"definitions\": {\n        \"fieldString\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"value\": { \"type\": [\"string\", \"null\"] },\n                \"is_confident\": { \"type\": \"boolean\" }\n            },\n            \"required\": [\"value\", \"is_confident\"],\n            \"additionalProperties\": False\n        },\n        \"fieldNumber\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"value\": { \"type\": [\"number\", \"null\"] },\n                \"is_confident\": { \"type\": \"boolean\" }\n            },\n            \"required\": [\"value\", \"is_confident\"],\n            \"additionalProperties\": False\n        }\n    },\n    \"properties\": {\n        \"item_keys\": {\n            \"type\": \"array\",\n            \"items\": { \"type\": \"string\" },\n            \"uniqueItems\": True\n        },\n        \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"kode_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n                    \"nama_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n                    \"qty\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"satuan\": { \"$ref\": \"#/definitions/fieldString\" },\n                    \"harga_satuan\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"harga_bruto\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"diskon_persen\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"diskon_rp\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"jumlah_netto\": { \"$ref\": \"#/definitions/fieldNumber\" }\n                },\n                \"required\": [\n                    \"kode_barang_invoice\",\n                    \"nama_barang_invoice\",\n                    \"qty\",\n                    \"satuan\",\n                    \"harga_satuan\",\n                    \"harga_bruto\",\n                    \"diskon_persen\",\n                    \"diskon_rp\",\n                    \"jumlah_netto\"\n                ],\n                \"additionalProperties\": False\n            }\n        },\n        \"total_items\": { \"$ref\": \"#/definitions/fieldNumber\" }\n    },\n    \"required\": [\"item_keys\", \"items\", \"total_items\"],\n    \"additionalProperties\": False\n}\n\n# Contoh data JSON (output yang ingin kamu validasi)\ninput_data = json.dumps(new_converted, indent=4, ensure_ascii=False)\n\n\n# Konversi string JSON menjadi dictionary Python\ndata = []\ntry:\n    data = json.loads(input_data)\nexcept json.JSONDecodeError as e:\n    print(\"Gagal memuat JSON:\", e)\n    exit(1)\n\n\ndef validate_json(data, schema):\n    validator = Draft7Validator(schema)\n    errors = sorted(validator.iter_errors(data), key=lambda e: e.path)\n\n    if not errors:\n        return {\n            \"valid\": True,\n            \"errors\": []\n        }\n    else:\n        error_list = []\n        for error in errors:\n            error_path = list(error.path)\n            error_list.append({\n                \"path\": error_path,\n                \"message\": error.message\n            })\n        return {\n            \"valid\": False,\n            \"errors\": error_list\n        }\n\n# Contoh: data dan schema kamu load dari parameter n8n\n#input_data = new\n#input_schema = schema\n\n# Jalankan validator dan return hasilnya ke n8n\nreturn json.dumps(validate_json(data, schema), indent=4, ensure_ascii=False)\n\n#return new"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        2880,
+        -2420
+      ],
+      "id": "a75ad4ab-f5ce-444c-9030-72bed0001358",
+      "name": "Check json to schema"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "# Loop over input items and add a new field called 'myNewField' to the JSON of each one\nnew = _input.item.json.output\nimport json\nfrom jsonschema import Draft7Validator\n\ndef convert_structure(item):\n  is_js_proxy = hasattr(item, '__class__') and item.__class__.__name__ == 'JsProxy'\n  \n  if is_js_proxy:\n    if hasattr(item, 'to_py'):\n      return convert_structure(item.to_py())\n    else:\n      try: return dict(item) # Jika JsProxy merepresentasikan objek JS\n      except: pass\n      try: return list(item)  # Jika JsProxy merepresentasikan array JS\n      except: pass\n      try: return str(item)   # Konversi paksa ke string sebagai fallback\n      except: return None    # Atau kembalikan None jika tidak bisa dikonversi\n  elif isinstance(item, dict):\n      # Jika dictionary, proses setiap value secara rekursif\n      return {k: convert_structure(v) for k, v in item.items()}\n  elif isinstance(item, list):\n      # Jika list, proses setiap elemen secara rekursif\n      return [convert_structure(elem) for elem in item]\n  else:\n      # Jika tipe dasar yang sudah kompatibel (str, int, float, bool, None), kembalikan apa adanya\n      return item\n\nnew_converted = convert_structure(new)\n\n\n# Skema JSON kamu\nschema = {\n    \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n    \"title\": \"InvoiceItems\",\n    \"type\": \"object\",\n    \"definitions\": {\n        \"fieldString\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"value\": { \"type\": [\"string\", \"null\"] },\n                \"is_confident\": { \"type\": \"boolean\" }\n            },\n            \"required\": [\"value\", \"is_confident\"],\n            \"additionalProperties\": False\n        },\n        \"fieldNumber\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"value\": { \"type\": [\"number\", \"null\"] },\n                \"is_confident\": { \"type\": \"boolean\" }\n            },\n            \"required\": [\"value\", \"is_confident\"],\n            \"additionalProperties\": False\n        }\n    },\n    \"properties\": {\n        \"item_keys\": {\n            \"type\": \"array\",\n            \"items\": { \"type\": \"string\" },\n            \"uniqueItems\": True\n        },\n        \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"kode_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n                    \"nama_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n                    \"qty\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"satuan\": { \"$ref\": \"#/definitions/fieldString\" },\n                    \"harga_satuan\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"harga_bruto\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"diskon_persen\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"diskon_rp\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"jumlah_netto\": { \"$ref\": \"#/definitions/fieldNumber\" }\n                },\n                \"required\": [\n                    \"kode_barang_invoice\",\n                    \"nama_barang_invoice\",\n                    \"qty\",\n                    \"satuan\",\n                    \"harga_satuan\",\n                    \"harga_bruto\",\n                    \"diskon_persen\",\n                    \"diskon_rp\",\n                    \"jumlah_netto\"\n                ],\n                \"additionalProperties\": False\n            }\n        },\n        \"total_items\": { \"$ref\": \"#/definitions/fieldNumber\" }\n    },\n    \"required\": [\"item_keys\", \"items\", \"total_items\"],\n    \"additionalProperties\": False\n}\n\n# Contoh data JSON (output yang ingin kamu validasi)\ninput_data = json.dumps(new_converted, indent=4, ensure_ascii=False)\n\n\n# Konversi string JSON menjadi dictionary Python\ndata = []\ntry:\n    data = json.loads(input_data)\nexcept json.JSONDecodeError as e:\n    print(\"Gagal memuat JSON:\", e)\n    exit(1)\n\n\ndef validate_json(data, schema):\n    validator = Draft7Validator(schema)\n    errors = sorted(validator.iter_errors(data), key=lambda e: e.path)\n\n    if not errors:\n        return {\n            \"valid\": True,\n            \"errors\": []\n        }\n    else:\n        error_list = []\n        for error in errors:\n            error_path = list(error.path)\n            error_list.append({\n                \"path\": error_path,\n                \"message\": error.message\n            })\n        return {\n            \"valid\": False,\n            \"errors\": error_list\n        }\n\n# Contoh: data dan schema kamu load dari parameter n8n\n#input_data = new\n#input_schema = schema\n\n# Jalankan validator dan return hasilnya ke n8n\nreturn [{\"json\": json.loads(json.dumps(validate_json(data, schema), indent=4, ensure_ascii=False))}]\n\n#return new"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        -480
+      ],
+      "id": "d7f751a3-e8bd-4879-a5f9-06a36a5d83a5",
+      "name": "Validate json to scheme"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "# Loop over input items and add a new field called 'myNewField' to the JSON of each one\nnew = _input.item.json.output\nimport json\nfrom jsonschema import Draft7Validator\n\ndef convert_structure(item):\n  is_js_proxy = hasattr(item, '__class__') and item.__class__.__name__ == 'JsProxy'\n  \n  if is_js_proxy:\n    if hasattr(item, 'to_py'):\n      return convert_structure(item.to_py())\n    else:\n      try: return dict(item) # Jika JsProxy merepresentasikan objek JS\n      except: pass\n      try: return list(item)  # Jika JsProxy merepresentasikan array JS\n      except: pass\n      try: return str(item)   # Konversi paksa ke string sebagai fallback\n      except: return None    # Atau kembalikan None jika tidak bisa dikonversi\n  elif isinstance(item, dict):\n      # Jika dictionary, proses setiap value secara rekursif\n      return {k: convert_structure(v) for k, v in item.items()}\n  elif isinstance(item, list):\n      # Jika list, proses setiap elemen secara rekursif\n      return [convert_structure(elem) for elem in item]\n  else:\n      # Jika tipe dasar yang sudah kompatibel (str, int, float, bool, None), kembalikan apa adanya\n      return item\n\nnew_converted = convert_structure(new)\n\n\n# Skema JSON kamu\nschema = {\n    \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n    \"title\": \"InvoiceItems\",\n    \"type\": \"object\",\n    \"definitions\": {\n        \"fieldString\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"value\": { \"type\": [\"string\", \"null\"] },\n                \"is_confident\": { \"type\": \"boolean\" }\n            },\n            \"required\": [\"value\", \"is_confident\"],\n            \"additionalProperties\": False\n        },\n        \"fieldNumber\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"value\": { \"type\": [\"number\", \"null\"] },\n                \"is_confident\": { \"type\": \"boolean\" }\n            },\n            \"required\": [\"value\", \"is_confident\"],\n            \"additionalProperties\": False\n        }\n    },\n    \"properties\": {\n        \"item_keys\": {\n            \"type\": \"array\",\n            \"items\": { \"type\": \"string\" },\n            \"uniqueItems\": True\n        },\n        \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"kode_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n                    \"nama_barang_invoice\": { \"$ref\": \"#/definitions/fieldString\" },\n                    \"qty\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"satuan\": { \"$ref\": \"#/definitions/fieldString\" },\n                    \"harga_satuan\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"harga_bruto\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"diskon_persen\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"diskon_rp\": { \"$ref\": \"#/definitions/fieldNumber\" },\n                    \"jumlah_netto\": { \"$ref\": \"#/definitions/fieldNumber\" }\n                },\n                \"required\": [\n                    \"kode_barang_invoice\",\n                    \"nama_barang_invoice\",\n                    \"qty\",\n                    \"satuan\",\n                    \"harga_satuan\",\n                    \"harga_bruto\",\n                    \"diskon_persen\",\n                    \"diskon_rp\",\n                    \"jumlah_netto\"\n                ],\n                \"additionalProperties\": False\n            }\n        },\n        \"total_items\": { \"$ref\": \"#/definitions/fieldNumber\" }\n    },\n    \"required\": [\"item_keys\", \"items\", \"total_items\"],\n    \"additionalProperties\": False\n}\n\n# Contoh data JSON (output yang ingin kamu validasi)\ninput_data = json.dumps(new_converted, indent=4, ensure_ascii=False)\n\n\n# Konversi string JSON menjadi dictionary Python\ndata = []\ntry:\n    data = json.loads(input_data)\nexcept json.JSONDecodeError as e:\n    print(\"Gagal memuat JSON:\", e)\n    exit(1)\n\n\ndef validate_json(data, schema):\n    validator = Draft7Validator(schema)\n    errors = sorted(validator.iter_errors(data), key=lambda e: e.path)\n\n    if not errors:\n        return {\n            \"valid\": True,\n            \"errors\": []\n        }\n    else:\n        error_list = []\n        for error in errors:\n            error_path = list(error.path)\n            error_list.append({\n                \"path\": error_path,\n                \"message\": error.message\n            })\n        return {\n            \"valid\": False,\n            \"errors\": error_list\n        }\n\n# Contoh: data dan schema kamu load dari parameter n8n\n#input_data = new\n#input_schema = schema\n\n# Jalankan validator dan return hasilnya ke n8n\nreturn [{\"json\": json.loads(json.dumps(validate_json(data, schema), indent=4, ensure_ascii=False))}]\n\n#return new"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2580,
+        -2440
+      ],
+      "id": "6477a5aa-8e3a-4c06-95f2-b69c92422dee",
+      "name": "Validate json to scheme1"
+    },
+    {
+      "parameters": {
+        "content": "Put this on another workflow",
+        "height": 320,
+        "width": 520,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        -2540
+      ],
+      "id": "14587693-2eb1-4de2-b383-00bebabd70ca",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "You might need this tools",
+        "height": 320,
+        "width": 520,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2480,
+        -2540
+      ],
+      "id": "0ce46b26-bcb6-4eee-bab3-d7e2e3532f08",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code": {
+      "main": [
+        []
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow": {
+      "main": [
+        [
+          {
+            "node": "Extract information from OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Validate Items by Calculation",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract information from OCR",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract information from OCR": {
+      "main": [
+        [
+          {
+            "node": "Invoice Header",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validate Items by Calculation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Change point and comma",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Set a Structure",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Validate Items by Calculation",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Auto-fixing Output Parser1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Auto-fixing Output Parser1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-fixing Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Invoice Header",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Invoice Header",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Items by Calculation": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Change point and comma",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Change point and comma": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set a Structure": {
+      "main": [
+        [
+          {
+            "node": "Validate json to scheme",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge items and debug after structurize": {
+      "main": [
+        [
+          {
+            "node": "merge all",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge items and debug": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Merge items and debug",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Merge items and debug after structurize",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Merge items and debug",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Set a Structure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-fixing Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Set a Structure",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Jatuh Tempo1": {
+      "main": [
+        [
+          {
+            "node": "Merge Date Faktur ALL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date to Epoch": {
+      "main": [
+        [
+          {
+            "node": "Merge Jatuh Tempo1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date to Epoch1": {
+      "main": [
+        [
+          {
+            "node": "Merge Tanggal Faktur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Jatuh Tempo": {
+      "main": [
+        [
+          {
+            "node": "Date to Epoch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Tanggal Faktur": {
+      "main": [
+        [
+          {
+            "node": "Date to Epoch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confident Jatuh Tempo": {
+      "main": [
+        [
+          {
+            "node": "Merge Jatuh Tempo1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Confident Tanggal Faktur": {
+      "main": [
+        [
+          {
+            "node": "Merge Tanggal Faktur",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Tanggal Faktur": {
+      "main": [
+        [
+          {
+            "node": "Merge Date Faktur ALL",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Parse Jatuh Tempo NULL": {
+      "main": [
+        [
+          {
+            "node": "Merge Jatuh Tempo1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Jatuh Tempo NULL1": {
+      "main": [
+        [
+          {
+            "node": "Merge Tanggal Faktur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Header": {
+      "main": [
+        [
+          {
+            "node": "If jatuh tempo exist",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Tanggal Faktur Exist",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Confident Jatuh Tempo",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Confident Tanggal Faktur",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge header ALL",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "If jatuh tempo exist": {
+      "main": [
+        [
+          {
+            "node": "Parse Jatuh Tempo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Jatuh Tempo NULL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Tanggal Faktur Exist": {
+      "main": [
+        [
+          {
+            "node": "Parse Tanggal Faktur",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Jatuh Tempo NULL1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Date Faktur ALL": {
+      "main": [
+        [
+          {
+            "node": "Merge header ALL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge header ALL": {
+      "main": [
+        [
+          {
+            "node": "Insert epoch to data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert epoch to data": {
+      "main": [
+        [
+          {
+            "node": "merge all",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "merge all": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini6": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini parser2": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Auto-fixing Output Parser2",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-fixing Output Parser2": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini7": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Auto-fixing Output Parser2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Merge items and debug after structurize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check json to schema": {
+      "ai_tool": [
+        []
+      ]
+    },
+    "Validate json to scheme": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "d7927b49-33dd-4c22-8d46-7de68fe26d4c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fae1ee03025a19a86244f4ccdca4b811e711d8a022b44ef1ce4533dce22110d6"
+  },
+  "id": "6hnvNlCuWnXzX5nT",
+  "tags": [
+    {
+      "createdAt": "2025-03-28T17:10:48.756Z",
+      "updatedAt": "2025-03-28T17:10:48.756Z",
+      "id": "njUXE4tLjbDpL4VW",
+      "name": "POS AI"
+    }
+  ]
+}
