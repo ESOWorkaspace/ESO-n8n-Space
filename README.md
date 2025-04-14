@@ -48,5 +48,5 @@ Contributions are highly welcome! If you have suggestions for improvements, new 
 This project is licensed under the [MIT License](LICENSE). Please refer to the LICENSE file for further details.
 
 ## Contact
-If you have any questions or need assistance, feel free to open an issue on GitHub or contact us via [your contact information].
+If you have any questions or need assistance, feel free to open an issue on GitHub or contact us via mifthahulamien@gmail.com.
 
